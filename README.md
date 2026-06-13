@@ -1,7 +1,7 @@
 # Wakupi
 
 <h4 align="center">
-  WhatsApp Desktop Client with AI, Dynamic QRIS, and Desktop Control
+  WhatsApp Desktop Client — AI, Universal QRIS Payments & Desktop Control
 </h4>
 
 <p align="center">
@@ -32,13 +32,14 @@
 - Tone-based message composition
 - Per-chat AI toggle & settings
 
-### 💳 Dynamic QRIS Generator
-- Upload your QRIS static QR code
-- Generate dynamic QRIS with custom amounts
-- Send QRIS invoices directly to WhatsApp chats
-- Transaction history with status tracking
-- Product catalog for quick invoicing
-- Instant invoice generator in chat
+### 💳 Universal QRIS Payments
+- Supports **all Indonesian QRIS providers** — ShopeePay, DANA, OVO, GoPay, LinkAja, BSI, etc.
+- Convert any static QRIS into dynamic with custom amounts
+- Perfect for merchants, cashiers, online sellers, and small businesses
+- Send QRIS payment QR directly to customers via WhatsApp
+- Product catalog with prices for quick check-out
+- Transaction history and daily sales dashboard
+- Real-time invoice generator in any chat
 
 ### 🖥️ Desktop Controller
 - View running apps
