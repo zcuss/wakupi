@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Wakupi
+GenericName=WhatsApp + AI Client
+Comment=WhatsApp client with an AI playground
+Exec=wakupi
+Icon=wakupi
+Terminal=false
+Categories=Network;InstantMessaging;Utility;
+Keywords=whatsapp;chat;ai;messaging;
+StartupNotify=true
+StartupWMClass=Wakupi

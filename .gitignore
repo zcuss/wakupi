@@ -1,0 +1,23 @@
+# Build output
+build/bin
+frontend/dist
+
+# Node
+node_modules
+
+# WhatsApp data (sessions, database, media) - SENSITIVE
+data/
+
+# Temp files
+/tmp/
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
