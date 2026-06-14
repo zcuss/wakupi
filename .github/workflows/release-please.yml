@@ -1,19 +1,37 @@
-name: Build & Release
+name: Release Please
 
 on:
   push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
+    branches: [main]
 
 permissions:
   contents: write
+  pull-requests: write
+  issues: write
 
 jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          target-branch: main
+
   build-linux:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
 
       - uses: actions/setup-go@v5
         with:
@@ -22,6 +40,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install system deps
         run: |
@@ -34,7 +54,7 @@ jobs:
       - name: Build
         run: wails build -tags webkit2_41
 
-      - name: Package (tar.gz)
+      - name: Package
         run: tar -czf wakupi-linux-amd64.tar.gz -C build/bin wakupi
 
       - uses: actions/upload-artifact@v4
@@ -43,9 +63,13 @@ jobs:
           path: wakupi-linux-amd64.tar.gz
 
   build-windows:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
 
       - uses: actions/setup-go@v5
         with:
@@ -54,6 +78,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
@@ -61,7 +87,7 @@ jobs:
       - name: Build
         run: wails build
 
-      - name: Package (zip)
+      - name: Package
         run: Compress-Archive -Path build\bin\wakupi.exe -DestinationPath wakupi-windows-amd64.zip
 
       - uses: actions/upload-artifact@v4
@@ -69,8 +95,9 @@ jobs:
           name: wakupi-windows-amd64
           path: wakupi-windows-amd64.zip
 
-  release:
-    needs: [build-linux, build-windows]
+  upload-assets:
+    needs: [release-please, build-linux, build-windows]
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -78,33 +105,8 @@ jobs:
           pattern: wakupi-*
           merge-multiple: true
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: Wakupi ${{ github.ref_name }}
-          body: |
-            ## 🚀 Wakupi ${{ github.ref_name }}
-            Generated automatically by the release-please workflow.
-            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
-
-            ### Linux
-            ```bash
-            tar -xzf wakupi-linux-amd64.tar.gz
-            ./wakupi
-            ```
-            > Requires: libwebkit2gtk-4.1
-
-            ### Windows
-            Extract `wakupi-windows-amd64.zip` and run `wakupi.exe`
-
-            ### What's New
-            - WhatsApp Multi-Account client
-            - AI Assistant (OpenAI, Claude, Gemini, Ollama)
-            - Dynamic QRIS Generator & Invoice
-            - Desktop Controller with WhatsApp remote commands
-            - Modern UI with light/dark mode
-          files: wakupi-*.tar.gz, wakupi-*.zip
-          draft: false
-          prerelease: false
+      - name: Upload assets to release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: gh release upload "$TAG" wakupi-linux-amd64.tar.gz wakupi-windows-amd64.zip --clobber
