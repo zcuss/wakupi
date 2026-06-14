@@ -46,7 +46,7 @@ func (m *mockWA) ReactMessage(ctx context.Context, sid, jid, mid, sender, emoji 
 
 func newTestServer() (*Server, *mockWA) {
 	mock := &mockWA{}
-	srv := New(Config{Enabled: true, Addr: "127.0.0.1:0", Token: "secret"}, mock, NewHub(), nil)
+	srv := New(Config{Enabled: true, Addr: "127.0.0.1:0", Token: "secret"}, mock, NewHub(), nil, nil, nil)
 	return srv, mock
 }
 

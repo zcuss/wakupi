@@ -26,6 +26,81 @@ func (s *Server) registerGatewayRoutes(r *mux.Router) {
 	g.HandleFunc("/webhooks/{id}/status", s.handleWebhookStatus).Methods(http.MethodGet)
 	g.HandleFunc("/webhooks/{id}/test", s.handleTestWebhook).Methods(http.MethodPost)
 	g.HandleFunc("/events", s.handleListEvents).Methods(http.MethodGet)
+
+	// Cron triggers + short-poll inbox — only mount if the relevant pieces exist.
+	if s.scheduler != nil {
+		g.HandleFunc("/cron", s.handleListCron).Methods(http.MethodGet)
+		g.HandleFunc("/cron", s.handleCreateCron).Methods(http.MethodPost)
+		g.HandleFunc("/cron/{id}", s.handleDeleteCron).Methods(http.MethodDelete)
+	}
+	if s.inbox != nil {
+		g.HandleFunc("/inbox", s.handleInboxPoll).Methods(http.MethodGet)
+		g.HandleFunc("/inbox/ack", s.handleInboxAck).Methods(http.MethodPost)
+		g.HandleFunc("/inbox/size", s.handleInboxSize).Methods(http.MethodGet)
+	}
+}
+
+// --- Cron handlers -----------------------------------------------------
+
+func (s *Server) handleListCron(w http.ResponseWriter, r *http.Request) {
+	writeOK(w, s.scheduler.List())
+}
+
+func (s *Server) handleCreateCron(w http.ResponseWriter, r *http.Request) {
+	var job gateway.CronJob
+	if err := json.NewDecoder(r.Body).Decode(&job); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_body", err.Error())
+		return
+	}
+	created, err := s.scheduler.Add(job)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "create_failed", err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "data": created})
+}
+
+func (s *Server) handleDeleteCron(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	if err := s.scheduler.Remove(id); err != nil {
+		writeError(w, http.StatusNotFound, "not_found", err.Error())
+		return
+	}
+	writeOK(w, map[string]string{"id": id})
+}
+
+// --- Inbox handlers ----------------------------------------------------
+
+func (s *Server) handleInboxPoll(w http.ResponseWriter, r *http.Request) {
+	chat := r.URL.Query().Get("chat")
+	ackParam := r.URL.Query().Get("ack")
+	var ackIDs []string
+	if ackParam != "" {
+		ackIDs = strings.Split(ackParam, ",")
+	}
+	writeOK(w, s.inbox.Poll(chat, ackIDs))
+}
+
+func (s *Server) handleInboxAck(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IDs []string `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_body", err.Error())
+		return
+	}
+	// Poll with ack marks them and returns whatever is still unacked
+	remaining := s.inbox.Poll("", body.IDs)
+	writeOK(w, map[string]any{
+		"acked":     len(body.IDs),
+		"remaining": len(remaining),
+	})
+}
+
+func (s *Server) handleInboxSize(w http.ResponseWriter, r *http.Request) {
+	writeOK(w, map[string]int{"size": s.inbox.Size()})
 }
 
 func (s *Server) handleListWebhooks(w http.ResponseWriter, r *http.Request) {

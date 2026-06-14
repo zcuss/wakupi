@@ -25,7 +25,7 @@ func freeAddr(t *testing.T) string {
 func TestLiveStartStopAndWS(t *testing.T) {
 	addr := freeAddr(t)
 	hub := NewHub()
-	srv := New(Config{Enabled: true, Addr: addr, Token: "live"}, &mockWA{}, hub, nil)
+	srv := New(Config{Enabled: true, Addr: addr, Token: "live"}, &mockWA{}, hub, nil, nil, nil)
 	errc := srv.Start()
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -77,7 +77,7 @@ func TestLiveStartStopAndWS(t *testing.T) {
 
 func TestWSUnauthorized(t *testing.T) {
 	addr := freeAddr(t)
-	srv := New(Config{Enabled: true, Addr: addr, Token: "live"}, &mockWA{}, NewHub(), nil)
+	srv := New(Config{Enabled: true, Addr: addr, Token: "live"}, &mockWA{}, NewHub(), nil, nil, nil)
 	srv.Start()
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

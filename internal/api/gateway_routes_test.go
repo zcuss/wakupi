@@ -21,8 +21,19 @@ func newTestServerWithGateway(t *testing.T) (*Server, *gateway.Dispatcher) {
 		Enabled: true,
 		Addr:    "127.0.0.1:0",
 		Token:   "secret",
-	}, &mockWA{}, NewHub(), gw)
+	}, &mockWA{}, NewHub(), gw, nil, nil)
 	return srv, gw
+}
+
+func newTestServerWithAll(t *testing.T) (*Server, *gateway.Dispatcher, *gateway.Scheduler, *gateway.Inbox) {
+	t.Helper()
+	gw, _ := gateway.NewDispatcher(t.TempDir()+"/g.yaml", nil)
+	sched := gateway.NewScheduler(50*time.Millisecond, func(action string, args map[string]string) error { return nil })
+	inbox := gateway.NewInbox(16)
+	srv := New(Config{
+		Enabled: true, Addr: "127.0.0.1:0", Token: "secret",
+	}, &mockWA{}, NewHub(), gw, sched, inbox)
+	return srv, gw, sched, inbox
 }
 
 func authReq(r *http.Request) *http.Request {

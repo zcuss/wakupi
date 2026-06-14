@@ -28,6 +28,8 @@ type App struct {
 	apiHub   *api.Hub
 	apiSrv   *api.Server
 	gateway  *gateway.Dispatcher
+	scheduler *gateway.Scheduler
+	inbox    *gateway.Inbox
 
 	aiStreamMu     sync.Mutex
 	aiStreamCancel context.CancelFunc
@@ -49,7 +51,11 @@ func (a *App) startup(ctx context.Context) {
 		runtime.LogErrorf(ctx, "gateway init failed: %v", gerr)
 	}
 	a.gateway = gw
+	a.inbox = gateway.NewInbox(512)
 
+	// The scheduler dispatches actions like "send_message" against the wa
+	// manager. It is started in startAPI() once the wa.Manager is fully
+	// initialized, so the action closure can capture `a.wa` safely.
 	mgr, err := wa.NewManager("./data", func(name string, data ...interface{}) {
 		runtime.EventsEmit(a.ctx, name, data...)
 		if a.apiHub != nil {
@@ -59,6 +65,10 @@ func (a *App) startup(ctx context.Context) {
 		// emitted as (event, payload) carry the payload in data[0].
 		if a.gateway != nil && len(data) > 0 {
 			a.gateway.Dispatch(name, data[0])
+		}
+		// Capture incoming messages into the inbox for short-poll consumers
+		if a.inbox != nil && name == "wa:message" && len(data) > 0 {
+			a.captureInbox(data[0])
 		}
 	})
 	if err != nil {
@@ -74,6 +84,7 @@ func (a *App) startup(ctx context.Context) {
 		runtime.LogErrorf(ctx, "load existing sessions: %v", err)
 	}
 
+	a.initScheduler()
 	a.startAPI(ctx)
 }
 
@@ -97,7 +108,7 @@ func (a *App) startAPI(ctx context.Context) {
 		runtime.LogWarning(ctx, "Wakupi API bound to 0.0.0.0 without TLS — exposing WhatsApp control to the network. Use 127.0.0.1 or configure TLS.")
 	}
 
-	a.apiSrv = api.New(cfg, a.wa, a.apiHub, a.gateway)
+	a.apiSrv = api.New(cfg, a.wa, a.apiHub, a.gateway, a.scheduler, a.inbox)
 	errc := a.apiSrv.Start()
 	go func() {
 		if e := <-errc; e != nil {

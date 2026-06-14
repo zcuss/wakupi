@@ -34,21 +34,25 @@ type WAService interface {
 
 // Server is the embedded REST + WebSocket API server.
 type Server struct {
-	cfg    Config
-	wa     WAService
-	hub    *Hub
-	gw     *gateway.Dispatcher
-	router *mux.Router
-	http   *http.Server
+	cfg       Config
+	wa        WAService
+	hub       *Hub
+	gw        *gateway.Dispatcher
+	scheduler *gateway.Scheduler
+	inbox     *gateway.Inbox
+	router    *mux.Router
+	http      *http.Server
 }
 
 // New builds a Server. Call Start to begin listening.
-func New(cfg Config, svc WAService, hub *Hub, gw *gateway.Dispatcher) *Server {
+func New(cfg Config, svc WAService, hub *Hub, gw *gateway.Dispatcher, sched *gateway.Scheduler, inbox *gateway.Inbox) *Server {
 	s := &Server{
-		cfg: cfg,
-		wa:  svc,
-		hub: hub,
-		gw:  gw,
+		cfg:       cfg,
+		wa:        svc,
+		hub:       hub,
+		gw:        gw,
+		scheduler: sched,
+		inbox:     inbox,
 	}
 	s.router = s.buildRouter()
 	s.http = &http.Server{
