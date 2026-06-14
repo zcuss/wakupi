@@ -22,10 +22,10 @@ const (
 	ProviderHermes    Provider = "hermes"
 )
 
-// DefaultHermesBaseURL is where the local Hermes Agent gateway lives.
-// The AI Assistant talks to Hermes's OpenAI-compatible /v1/chat/completions
-// endpoint by default — no API key needed, the gateway handles auth.
-const DefaultHermesBaseURL = "http://127.0.0.1:8765/v1/chat/completions"
+// DefaultHermesBaseURL is the public Hermes Desktop/OpenAI-compatible endpoint.
+// Wakupi uses this by default so the AI Assistant talks to the same Hermes
+// backend as Hermes Desktop instead of requiring a local gateway process.
+const DefaultHermesBaseURL = "https://hermes.zcuss.xyz/v1/chat/completions"
 const DefaultHermesModel = "hermes"
 
 type Config struct {
@@ -140,7 +140,8 @@ func (s *Service) Summarize(ctx context.Context, text string) (string, error) {
 // Ping sends a minimal request to validate key + model + endpoint in one shot.
 // It bypasses the Enabled() gate so the user can test a config before saving it.
 func (s *Service) Ping(ctx context.Context) error {
-	if s.cfg.Provider != ProviderOllama && s.cfg.APIKey == "" {
+	// Ollama and Hermes don't need an API key.
+	if s.cfg.Provider != ProviderOllama && s.cfg.Provider != ProviderHermes && s.cfg.APIKey == "" {
 		return errors.New("API key kosong")
 	}
 	switch s.cfg.Provider {

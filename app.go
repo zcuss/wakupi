@@ -119,13 +119,33 @@ func (a *App) startAPI(ctx context.Context) {
 }
 
 func (a *App) loadAIConfig() ai.Config {
+	fallback := ai.Config{
+		Provider: ai.ProviderHermes,
+		BaseURL:  ai.DefaultHermesBaseURL,
+		Model:    ai.DefaultHermesModel,
+		Enabled:  true,
+	}
 	if a.wa == nil {
-		return ai.Config{}
+		return fallback
 	}
 	raw, _ := a.wa.GetAppSetting(a.ctx, "ai_config")
+	if raw == "" {
+		return fallback
+	}
 	var cfg ai.Config
-	if raw != "" {
-		_ = json.Unmarshal([]byte(raw), &cfg)
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		return fallback
+	}
+	if cfg.Provider == "" {
+		cfg.Provider = ai.ProviderHermes
+	}
+	if cfg.Provider == ai.ProviderHermes {
+		if cfg.BaseURL == "" {
+			cfg.BaseURL = ai.DefaultHermesBaseURL
+		}
+		if cfg.Model == "" {
+			cfg.Model = ai.DefaultHermesModel
+		}
 	}
 	return cfg
 }

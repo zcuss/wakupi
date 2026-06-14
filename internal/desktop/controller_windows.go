@@ -132,37 +132,7 @@ if ($asyncInfo -ne $null) {
 	return info, nil
 }
 
-// GetVolume returns current volume percentage.
-func (w *windowsController) GetVolume() (int, error) {
-	script := `
-Add-Type -AssemblyName System.Runtime.WindowsRuntime
-$dev = ([Windows.Devices.Enumeration.DeviceInformation]::FindAllAsync('System.Devices.InterfaceClassGuid:="{4D36E96C-E325-11CE-BFC1-08002BE10318}"')).GetAwaiter().GetResult()
-Write-Output "50"`
-	out, err := exec.Command("powershell", "-Command", script).Output()
-	if err != nil {
-		return 50, nil
-	}
-	v, err := strconv.Atoi(strings.TrimSpace(string(out)))
-	if err != nil {
-		return 50, nil
-	}
-	return v, nil
-}
 
-// SetVolume sets volume percentage.
-func (w *windowsController) SetVolume(pct int) error {
-	if pct < 0 {
-		pct = 0
-	}
-	if pct > 100 {
-		pct = 100
-	}
-	// Use nircmd or volume adjuster
-	return exec.Command("powershell", "-Command",
-		fmt.Sprintf(`$wshShell = New-Object -ComObject WScript.Shell; 1..%d | %% { $wshShell.SendKeys([char]175) }; 1..%d | %% { $wshShell.SendKeys([char]174) }`, 100-pct, pct)).Run()
-}
-
-// TakeScreenshot captures the screen.
 func (w *windowsController) TakeScreenshot() (string, error) {
 	tmpDir := os.TempDir()
 	path := filepath.Join(tmpDir, fmt.Sprintf("screenshot_%d.png", time.Now().Unix()))

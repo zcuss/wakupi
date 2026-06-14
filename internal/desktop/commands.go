@@ -4,10 +4,31 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
-// HandleCommand parses a !command and executes it, returning a response string.
+// HandleCommand is kept for old callers. It now uses the safe default policy,
+// which rejects desktop control unless the caller explicitly opts in via
+// HandleCommandWithPolicy.
 func HandleCommand(ctrl Controller, text string) string {
+	return HandleCommandWithPolicy(ctrl, text, "", DefaultPolicy())
+}
+
+// HandleCommandWithPolicy parses a !command and executes it only when allowed
+// by SecurityPolicy. This prevents chat-side desktop control from silently
+// spawning PowerShell/cmd/taskkill for any incoming WhatsApp message.
+func HandleCommandWithPolicy(ctrl Controller, text, sender string, policy *SecurityPolicy) string {
+	text = strings.TrimSpace(text)
+	confirmPrefix := "!confirm "
+	if strings.HasPrefix(strings.ToLower(text), confirmPrefix) {
+		tok := strings.TrimSpace(text[len(confirmPrefix):])
+		pending, ok := confirmStore.consume(tok, sender)
+		if !ok {
+			return "❌ Konfirmasi tidak valid / expired"
+		}
+		return runDesktopCommand(ctrl, pending.Action, strings.Fields(pending.Args), pending.Policy)
+	}
+
 	// Remove leading ! and trim
 	cmd := strings.TrimSpace(strings.TrimPrefix(text, "!"))
 	if cmd == "" {
@@ -18,15 +39,60 @@ func HandleCommand(ctrl Controller, text string) string {
 	if len(parts) == 0 {
 		return ""
 	}
-
 	action := strings.ToLower(parts[0])
 
+	// Help is safe even when desktop control is disabled.
+	if action == "help" || action == "bantuan" || action == "cmd" {
+		return desktopHelp(policy)
+	}
+
+	if policy == nil {
+		policy = DefaultPolicy()
+	}
+	if policy.ConfirmTTL == 0 {
+		policy.ConfirmTTL = 60 * time.Second
+	}
+	cmdLimiter.perMin = policy.RateLimitPerMin
+	if !cmdLimiter.allow(sender) {
+		return "❌ Terlalu banyak command. Coba lagi nanti."
+	}
+
+	decision := policy.classify(action, sender)
+	if decision == policyReject {
+		return "🔒 Desktop Controller diblokir. Aktifkan dan allowlist command/sender dulu di Settings."
+	}
+
+	if action == "open" || action == "launch" || action == "start" || action == "close" || action == "kill" || action == "stop" {
+		if len(parts) < 2 {
+			return "❌ Format: !open <nama_app> / !close <nama_app>"
+		}
+		if !policy.allowOpenApp(parts[1]) {
+			return fmt.Sprintf("🔒 App tidak di-allow: %s\nAllowed: %s", parts[1], policy.denyOpenList())
+		}
+	}
+
+	if decision == policyConfirm {
+		tok := confirmStore.issue(pendingConfirm{
+			Action:   action,
+			Args:     strings.Join(parts[1:], " "),
+			Sender:   sender,
+			IssuedAt: time.Now(),
+			Policy:   policy,
+		})
+		confirmStore.gc()
+		return fmt.Sprintf("⚠️ Konfirmasi command desktop: !%s\nBalas: !confirm %s\nExpired: %s", cmd, tok, policy.ConfirmTTL)
+	}
+
+	return runDesktopCommand(ctrl, action, parts[1:], policy)
+}
+
+func runDesktopCommand(ctrl Controller, action string, args []string, policy *SecurityPolicy) string {
 	switch action {
 	case "open", "launch", "start":
-		if len(parts) < 2 {
-			return "❌ Format: !open <nama_app>\nContoh: !open terminal, !open firefox"
+		if len(args) < 1 {
+			return "❌ Format: !open <nama_app>\nContoh: !open firefox"
 		}
-		appName := parts[1]
+		appName := args[0]
 		err := ctrl.OpenApp(appName)
 		if err != nil {
 			return fmt.Sprintf("❌ Gagal membuka %s: %v", appName, err)
@@ -34,10 +100,10 @@ func HandleCommand(ctrl Controller, text string) string {
 		return fmt.Sprintf("✅ %s dibuka!", appName)
 
 	case "close", "kill", "stop":
-		if len(parts) < 2 {
+		if len(args) < 1 {
 			return "❌ Format: !close <nama_app>\nContoh: !close firefox"
 		}
-		appName := parts[1]
+		appName := args[0]
 		err := ctrl.CloseApp(appName)
 		if err != nil {
 			return fmt.Sprintf("❌ Gagal menutup %s: %v", appName, err)
@@ -103,15 +169,14 @@ func HandleCommand(ctrl Controller, text string) string {
 		return result
 
 	case "volume", "vol":
-		if len(parts) < 2 {
-			// Get current volume
+		if len(args) < 1 {
 			vol, err := ctrl.GetVolume()
 			if err != nil {
 				return fmt.Sprintf("❌ Gagal: %v", err)
 			}
 			return fmt.Sprintf("🔊 Volume: %d%%", vol)
 		}
-		pct, err := strconv.Atoi(parts[1])
+		pct, err := strconv.Atoi(args[0])
 		if err != nil || pct < 0 || pct > 100 {
 			return "❌ Format: !volume <0-100>"
 		}
@@ -135,20 +200,28 @@ func HandleCommand(ctrl Controller, text string) string {
 		}
 		return "🔒 Screen locked!"
 
-	case "help", "bantuan", "cmd":
-		return `🤖 Desktop Commands:
-!open <app> - Buka aplikasi
-!close <app> - Tutup aplikasi
-!apps - List app berjalan
-!play - Play/Pause media
-!next - Next track
-!prev - Previous track
-!now - Lagu sekarang
-!volume [0-100] - Get/Set volume
-!screenshot - Ambil screenshot
-!lock - Lock screen`
-
 	default:
-		return fmt.Sprintf("❓ Command tidak dikenali: !%s\nKetik !help untuk daftar command", cmd)
+		return fmt.Sprintf("❓ Command tidak dikenali: !%s\nKetik !help untuk daftar command", action)
 	}
+}
+
+func desktopHelp(policy *SecurityPolicy) string {
+	allowed := "(desktop control off)"
+	if policy != nil && policy.Enabled {
+		allowed = policy.denyOpenList()
+	}
+	return `🤖 Desktop Commands:
+!open <app> - Buka aplikasi (allowlist only)
+!close <app> - Tutup aplikasi (opt-in)
+!apps - List app berjalan
+!play - Play/Pause media (opt-in)
+!next - Next track (opt-in)
+!prev - Previous track (opt-in)
+!now - Lagu sekarang (opt-in)
+!volume [0-100] - Get/Set volume (opt-in)
+!screenshot - Ambil screenshot (opt-in)
+!lock - Lock screen (opt-in)
+!confirm <token> - Konfirmasi command berisiko
+
+Allowed apps: ` + allowed
 }
