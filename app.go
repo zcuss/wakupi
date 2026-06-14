@@ -9,10 +9,12 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"wakupi/internal/ai"
+	"wakupi/internal/api"
 	"wakupi/internal/desktop"
 	"wakupi/internal/wa"
 )
@@ -22,6 +24,9 @@ type App struct {
 	wa  *wa.Manager
 	ai  *ai.Service
 	dc  desktop.Controller
+
+	apiSrv *api.Server
+	apiHub *api.Hub
 
 	aiStreamMu     sync.Mutex
 	aiStreamCancel context.CancelFunc
@@ -34,8 +39,15 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
+	// Hub must exist before the manager so the emit callback can fan events
+	// into it from the very first connection event.
+	a.apiHub = api.NewHub()
+
 	mgr, err := wa.NewManager("./data", func(name string, data ...interface{}) {
 		runtime.EventsEmit(a.ctx, name, data...)
+		if a.apiHub != nil {
+			a.apiHub.Broadcast(api.Event{Name: name, Data: data})
+		}
 	})
 	if err != nil {
 		runtime.LogErrorf(ctx, "wa manager init failed: %v", err)
@@ -49,6 +61,38 @@ func (a *App) startup(ctx context.Context) {
 	if err := mgr.LoadExisting(ctx); err != nil {
 		runtime.LogErrorf(ctx, "load existing sessions: %v", err)
 	}
+
+	a.startAPI(ctx)
+}
+
+// startAPI loads the API config and launches the embedded REST/WS server.
+func (a *App) startAPI(ctx context.Context) {
+	cfg, newToken, err := api.LoadConfig("./data")
+	if err != nil {
+		runtime.LogErrorf(ctx, "api config load failed: %v", err)
+		return
+	}
+	if !cfg.Enabled {
+		runtime.LogInfo(ctx, "Wakupi API disabled in ./data/api.yaml")
+		return
+	}
+	if newToken {
+		runtime.LogInfof(ctx, "Wakupi API token (save this): %s", cfg.Token)
+		// Also print to stdout so headless runs surface it without the GUI log.
+		fmt.Printf("\n=== Wakupi API token (save this): %s ===\n\n", cfg.Token)
+	}
+	if strings.HasPrefix(cfg.Addr, "0.0.0.0") && cfg.TLSCert == "" {
+		runtime.LogWarning(ctx, "Wakupi API bound to 0.0.0.0 without TLS — exposing WhatsApp control to the network. Use 127.0.0.1 or configure TLS.")
+	}
+
+	a.apiSrv = api.New(cfg, a.wa, a.apiHub)
+	errc := a.apiSrv.Start()
+	go func() {
+		if e := <-errc; e != nil {
+			runtime.LogErrorf(ctx, "api server error: %v", e)
+		}
+	}()
+	runtime.LogInfof(ctx, "Wakupi API listening on %s", cfg.Addr)
 }
 
 func (a *App) loadAIConfig() ai.Config {
@@ -64,6 +108,11 @@ func (a *App) loadAIConfig() ai.Config {
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	if a.apiSrv != nil {
+		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = a.apiSrv.Stop(sctx)
+	}
 	if a.wa != nil {
 		a.wa.Shutdown()
 	}
