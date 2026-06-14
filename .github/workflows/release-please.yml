@@ -6,8 +6,10 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
-  issues: write
+
+# Direct release per push (no PR gate). Conventional commits determine
+# version bump. To use this safely, repo Settings → Actions → General →
+# "Workflow permissions" must be set to "Read and write permissions".
 
 jobs:
   release-please:
@@ -23,6 +25,7 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           target-branch: main
+          skip-github-pull-request: true
 
   build-linux:
     needs: release-please
