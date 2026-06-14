@@ -12,13 +12,18 @@ export interface AIConfig {
 
 export type ConnStatus = 'off' | 'unknown' | 'ok' | 'error'
 
-// Hermes is the default AI provider — the local Hermes Agent gateway handles
-// auth and routes to whatever upstream model is configured there. No API key
-// required, so a fresh install has a working AI Assistant out of the box.
+// Hermes is the default AI provider. hermes.zcuss.xyz is the public
+// Hermes Agent (Nous Research's gateway), which handles auth and routes to
+// whatever upstream model is configured there. No API key required, so a
+// fresh install has a working AI Assistant out of the box.
+//
+// Wakupi can also be registered as a Hermes Agent platform (in addition to
+// Telegram / WhatsApp / Discord) via the wakupi platform plugin, but the
+// AI Assistant panel itself talks directly to the public Hermes endpoint.
 const defaults: AIConfig = {
   provider: 'hermes',
   apiKey: '',
-  baseUrl: 'http://127.0.0.1:8765/v1/chat/completions',
+  baseUrl: 'https://hermes.zcuss.xyz/v1/chat/completions',
   model: 'hermes',
   enabled: true,
 }
