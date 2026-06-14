@@ -1,10 +1,14 @@
 {
-  "release-type": "go",
-  "package-name": "wakupi",
-  "changelog-path": "CHANGELOG.md",
-  "include-v-in-tag": true,
-  "pull-request-title-pattern": "release: ${version}",
-  "extra-files": [
-    "go.mod"
-  ]
+  "packages": {
+    ".": {
+      "release-type": "go",
+      "package-name": "wakupi",
+      "changelog-path": "CHANGELOG.md",
+      "include-v-in-tag": true,
+      "pull-request-title-pattern": "release: ${version}",
+      "extra-files": [
+        "go.mod"
+      ]
+    }
+  }
 }
