@@ -19,7 +19,14 @@ const (
 	ProviderAnthropic Provider = "anthropic"
 	ProviderGemini    Provider = "gemini"
 	ProviderOllama    Provider = "ollama"
+	ProviderHermes    Provider = "hermes"
 )
+
+// DefaultHermesBaseURL is where the local Hermes Agent gateway lives.
+// The AI Assistant talks to Hermes's OpenAI-compatible /v1/chat/completions
+// endpoint by default — no API key needed, the gateway handles auth.
+const DefaultHermesBaseURL = "http://127.0.0.1:8765/v1/chat/completions"
+const DefaultHermesModel = "hermes"
 
 type Config struct {
 	Provider Provider `json:"provider"`
@@ -56,7 +63,23 @@ func (s *Service) Config() Config {
 }
 
 func (s *Service) Enabled() bool {
-	return s.cfg.Enabled && (s.cfg.APIKey != "" || s.cfg.Provider == ProviderOllama)
+	if !s.cfg.Enabled {
+		return false
+	}
+	// Hermes and Ollama don't need an API key (gateway-trusted or local).
+	if s.cfg.Provider == ProviderOllama || s.cfg.Provider == ProviderHermes {
+		return true
+	}
+	return s.cfg.APIKey != ""
+}
+
+func (s *Service) fillHermesDefaults() {
+	if s.cfg.BaseURL == "" {
+		s.cfg.BaseURL = DefaultHermesBaseURL
+	}
+	if s.cfg.Model == "" {
+		s.cfg.Model = DefaultHermesModel
+	}
 }
 
 // Chat is the unified prompt entrypoint. Returns a single completion string.
@@ -73,6 +96,9 @@ func (s *Service) Chat(ctx context.Context, system, user string) (string, error)
 		return s.callGemini(ctx, system, user)
 	case ProviderOllama:
 		return s.callOllama(ctx, system, user)
+	case ProviderHermes:
+		s.fillHermesDefaults()
+		return s.callOpenAI(ctx, system, user)
 	}
 	return "", fmt.Errorf("unknown provider: %s", s.cfg.Provider)
 }
@@ -130,6 +156,10 @@ func (s *Service) Ping(ctx context.Context) error {
 	case ProviderOllama:
 		_, err := s.callOllama(ctx, "Reply with OK.", "ping")
 		return err
+	case ProviderHermes:
+		s.fillHermesDefaults()
+		_, err := s.callOpenAI(ctx, "Reply with OK.", "ping")
+		return err
 	}
 	return fmt.Errorf("unknown provider: %s", s.cfg.Provider)
 }
@@ -145,6 +175,9 @@ func (s *Service) ListModels(ctx context.Context) ([]string, error) {
 		return s.listGeminiModels(ctx)
 	case ProviderOllama:
 		return s.listOllamaModels(ctx)
+	case ProviderHermes:
+		s.fillHermesDefaults()
+		return s.listOpenAIModels(ctx)
 	}
 	return nil, fmt.Errorf("unknown provider: %s", s.cfg.Provider)
 }

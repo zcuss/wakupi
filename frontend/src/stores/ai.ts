@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { GetAIConfig, SetAIConfig, AISuggestReplies, AISummarize, AICompose, AITestConnection, AIListModels } from '../../wailsjs/go/main/App'
 
 export interface AIConfig {
-  provider: 'openai' | 'anthropic' | 'gemini' | 'ollama' | ''
+  provider: 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'hermes' | ''
   apiKey: string
   baseUrl: string
   model: string
@@ -12,12 +12,15 @@ export interface AIConfig {
 
 export type ConnStatus = 'off' | 'unknown' | 'ok' | 'error'
 
+// Hermes is the default AI provider — the local Hermes Agent gateway handles
+// auth and routes to whatever upstream model is configured there. No API key
+// required, so a fresh install has a working AI Assistant out of the box.
 const defaults: AIConfig = {
-  provider: 'openai',
+  provider: 'hermes',
   apiKey: '',
-  baseUrl: '',
-  model: '',
-  enabled: false,
+  baseUrl: 'http://127.0.0.1:8765/v1/chat/completions',
+  model: 'hermes',
+  enabled: true,
 }
 
 export const useAIStore = defineStore('ai', () => {

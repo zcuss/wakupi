@@ -24,6 +24,7 @@ watch(() => ui.showAISettings, async (open) => {
 })
 
 const presets = [
+  { id: 'hermes', label: 'Hermes (Default)', provider: 'hermes', baseUrl: 'http://127.0.0.1:8765/v1/chat/completions', model: 'hermes' },
   { id: 'openai', label: 'OpenAI', provider: 'openai', baseUrl: '', model: 'gpt-4o-mini' },
   { id: 'anthropic', label: 'Anthropic Claude', provider: 'anthropic', baseUrl: '', model: 'claude-haiku-4-5-20251001' },
   { id: 'gemini', label: 'Google Gemini', provider: 'gemini', baseUrl: '', model: 'gemini-1.5-flash' },
@@ -45,7 +46,7 @@ function pickPreset(p: typeof presets[number]) {
 }
 
 const needsKey = computed(() => {
-  return local.value.provider !== 'ollama' && !(local.value.baseUrl || '').startsWith('http://localhost')
+  return local.value.provider !== 'ollama' && local.value.provider !== 'hermes' && !(local.value.baseUrl || '').startsWith('http://localhost')
 })
 
 async function save() {
@@ -124,6 +125,7 @@ async function loadModels() {
           <div>
             <label class="text-xs font-medium text-wa-muted dark:text-wa-muted-dark">Provider</label>
             <select v-model="local.provider" class="mt-1 w-full bg-wa-panel dark:bg-wa-hover-dark rounded-lg px-3 py-2 text-sm outline-none">
+              <option value="hermes">Hermes (default — talks to local Hermes Agent)</option>
               <option value="openai">OpenAI / OpenAI-compatible</option>
               <option value="anthropic">Anthropic Claude</option>
               <option value="gemini">Google Gemini</option>

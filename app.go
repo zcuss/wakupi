@@ -16,17 +16,18 @@ import (
 	"wakupi/internal/ai"
 	"wakupi/internal/api"
 	"wakupi/internal/desktop"
+	"wakupi/internal/gateway"
 	"wakupi/internal/wa"
 )
 
 type App struct {
-	ctx context.Context
-	wa  *wa.Manager
-	ai  *ai.Service
-	dc  desktop.Controller
-
-	apiSrv *api.Server
-	apiHub *api.Hub
+	ctx      context.Context
+	wa       *wa.Manager
+	ai       *ai.Service
+	dc       desktop.Controller
+	apiHub   *api.Hub
+	apiSrv   *api.Server
+	gateway  *gateway.Dispatcher
 
 	aiStreamMu     sync.Mutex
 	aiStreamCancel context.CancelFunc
@@ -39,14 +40,25 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
-	// Hub must exist before the manager so the emit callback can fan events
-	// into it from the very first connection event.
+	// Hub + gateway must exist before the manager so the emit callback can
+	// fan events into them from the very first connection event.
 	a.apiHub = api.NewHub()
+
+	gw, gerr := gateway.NewDispatcher("./data/gateway.yaml", nil)
+	if gerr != nil {
+		runtime.LogErrorf(ctx, "gateway init failed: %v", gerr)
+	}
+	a.gateway = gw
 
 	mgr, err := wa.NewManager("./data", func(name string, data ...interface{}) {
 		runtime.EventsEmit(a.ctx, name, data...)
 		if a.apiHub != nil {
 			a.apiHub.Broadcast(api.Event{Name: name, Data: data})
+		}
+		// Extract a single payload for the gateway dispatcher. Events
+		// emitted as (event, payload) carry the payload in data[0].
+		if a.gateway != nil && len(data) > 0 {
+			a.gateway.Dispatch(name, data[0])
 		}
 	})
 	if err != nil {
@@ -85,7 +97,7 @@ func (a *App) startAPI(ctx context.Context) {
 		runtime.LogWarning(ctx, "Wakupi API bound to 0.0.0.0 without TLS — exposing WhatsApp control to the network. Use 127.0.0.1 or configure TLS.")
 	}
 
-	a.apiSrv = api.New(cfg, a.wa, a.apiHub)
+	a.apiSrv = api.New(cfg, a.wa, a.apiHub, a.gateway)
 	errc := a.apiSrv.Start()
 	go func() {
 		if e := <-errc; e != nil {

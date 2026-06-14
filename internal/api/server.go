@@ -13,6 +13,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/gorilla/mux"
 
+	"wakupi/internal/gateway"
 	"wakupi/internal/wa"
 )
 
@@ -36,16 +37,18 @@ type Server struct {
 	cfg    Config
 	wa     WAService
 	hub    *Hub
+	gw     *gateway.Dispatcher
 	router *mux.Router
 	http   *http.Server
 }
 
 // New builds a Server. Call Start to begin listening.
-func New(cfg Config, svc WAService, hub *Hub) *Server {
+func New(cfg Config, svc WAService, hub *Hub, gw *gateway.Dispatcher) *Server {
 	s := &Server{
 		cfg: cfg,
 		wa:  svc,
 		hub: hub,
+		gw:  gw,
 	}
 	s.router = s.buildRouter()
 	s.http = &http.Server{
@@ -100,6 +103,9 @@ func (s *Server) buildRouter() *mux.Router {
 	auth.HandleFunc("/chats/{jid}/messages", s.handleSendMessage).Methods(http.MethodPost)
 	auth.HandleFunc("/chats/{jid}/read", s.handleMarkRead).Methods(http.MethodPost)
 	auth.HandleFunc("/chats/{jid}/react", s.handleReact).Methods(http.MethodPost)
+
+	// WhatsApp gateway: webhook CRUD + delivery status (n8n-style control).
+	s.registerGatewayRoutes(auth)
 
 	// WebSocket events. Auth is handled inline (browsers can't set headers on
 	// WS, so a ?token= query param is also accepted).
